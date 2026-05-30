@@ -154,19 +154,40 @@ function convertUsingCalibration(
   const p2 = calibrationPoints[1];
   const p3 = calibrationPoints[2];
 
-  const scaleX = (p2.vacuum.x - p1.vacuum.x) / (p2.map.x - p1.map.x || 1);
-  const scaleY = (p3.vacuum.y - p1.vacuum.y) / (p3.map.y - p1.map.y || 1);
+  const det = (p2.map.x - p1.map.x) * (p3.map.y - p1.map.y) - (p3.map.x - p1.map.x) * (p2.map.y - p1.map.y);
 
-  const vx1 = Math.round(p1.vacuum.x + (px1 - p1.map.x) * scaleX);
-  const vy1 = Math.round(p1.vacuum.y + (py1 - p1.map.y) * scaleY);
-  const vx2 = Math.round(p1.vacuum.x + (px2 - p1.map.x) * scaleX);
-  const vy2 = Math.round(p1.vacuum.y + (py2 - p1.map.y) * scaleY);
+  if (det === 0) {
+    logger.warn('ZoneConverter', 'Invalid calibration points (collinear)');
+    return {
+      x1: Math.round((uiZone.x1 / 100) * 12000 - 6000),
+      y1: Math.round((uiZone.y1 / 100) * 12000 - 6000),
+      x2: Math.round((uiZone.x2 / 100) * 12000 - 6000),
+      y2: Math.round((uiZone.y2 / 100) * 12000 - 6000),
+    };
+  }
+
+  const A =
+    ((p2.vacuum.x - p1.vacuum.x) * (p3.map.y - p1.map.y) - (p3.vacuum.x - p1.vacuum.x) * (p2.map.y - p1.map.y)) / det;
+  const B =
+    ((p3.vacuum.x - p1.vacuum.x) * (p2.map.x - p1.map.x) - (p2.vacuum.x - p1.vacuum.x) * (p3.map.x - p1.map.x)) / det;
+  const C = p1.vacuum.x - A * p1.map.x - B * p1.map.y;
+
+  const D =
+    ((p2.vacuum.y - p1.vacuum.y) * (p3.map.y - p1.map.y) - (p3.vacuum.y - p1.vacuum.y) * (p2.map.y - p1.map.y)) / det;
+  const E =
+    ((p3.vacuum.y - p1.vacuum.y) * (p2.map.x - p1.map.x) - (p2.vacuum.y - p1.vacuum.y) * (p3.map.x - p1.map.x)) / det;
+  const F = p1.vacuum.y - D * p1.map.x - E * p1.map.y;
+
+  const vx1 = Math.round(A * px1 + B * py1 + C);
+  const vy1 = Math.round(D * px1 + E * py1 + F);
+  const vx2 = Math.round(A * px2 + B * py2 + C);
+  const vy2 = Math.round(D * px2 + E * py2 + F);
 
   return {
-    x1: vx1,
-    y1: vy1,
-    x2: vx2,
-    y2: vy2,
+    x1: Math.min(vx1, vx2),
+    y1: Math.min(vy1, vy2),
+    x2: Math.max(vx1, vx2),
+    y2: Math.max(vy1, vy2),
   };
 }
 
