@@ -30,7 +30,7 @@ const VACUUM_COORD_OFFSET = 10000;
 
 type MapRotation = 0 | 90 | 180 | 270;
 
-function autoCalibrateFromRooms(
+export function autoCalibrateFromRooms(
   rooms: Room[],
   imageWidth: number,
   imageHeight: number,

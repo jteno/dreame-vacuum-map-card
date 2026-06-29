@@ -3,6 +3,8 @@ import type { Hass, CleaningSelectionMode, Zone, StopAction } from '@/types/home
 import type { RoomCleaningConfig } from '@/types/vacuum';
 import { useTranslation } from './useTranslation';
 import { convertUIZoneToVacuumZone } from '@/utils/zoneConverter';
+import { parseRoomsFromCamera } from '@/utils/roomParser';
+import type { MapRotation } from '@/utils/roomParser';
 import { logger } from '@/utils/logger';
 
 interface VacuumServicesParams {
@@ -192,19 +194,22 @@ export function useVacuumServices({ hass, entityId, mapEntityId, onSuccess, onEr
   const handleCleanZone = useCallback(
     async (zones: Zone[], imageWidth: number, imageHeight: number, repeats: number = 1) => {
       const mapEntity = hass.states[mapEntityId];
+      const rooms = parseRoomsFromCamera(hass, mapEntityId);
+      const rotation = (mapEntity?.attributes?.rotation as MapRotation | undefined) ?? 0;
 
       logger.debug('Vacuum', 'Clean zone - input:', {
         uiZones: zones,
         imageWidth,
         imageHeight,
         mapEntityId,
+        rotation,
         repeats,
         calibrationPoints: mapEntity?.attributes?.calibration_points,
       });
 
       // Convert UI zones (percentages) to vacuum coordinates
       const zoneData = zones.map((zone) => {
-        const vacuumZone = convertUIZoneToVacuumZone(zone, mapEntity, imageWidth, imageHeight);
+        const vacuumZone = convertUIZoneToVacuumZone(zone, mapEntity, imageWidth, imageHeight, rooms, rotation);
         return [vacuumZone.x1, vacuumZone.y1, vacuumZone.x2, vacuumZone.y2];
       });
 

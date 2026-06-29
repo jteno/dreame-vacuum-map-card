@@ -1,4 +1,6 @@
-import type { HassEntity } from '@/types/homeassistant';
+import type { HassEntity, Room } from '@/types/homeassistant';
+import type { MapRotation } from './roomParser';
+import { autoCalibrateFromRooms } from './roomParser';
 import { isNumber } from './typeGuards';
 import { logger } from './logger';
 
@@ -84,44 +86,49 @@ export function convertUIZoneToVacuumZone(
   uiZone: UIZone,
   mapEntity: HassEntity | undefined,
   imageWidth: number,
-  imageHeight: number
+  imageHeight: number,
+  rooms?: Room[],
+  rotation: MapRotation = 0
 ): VacuumZone {
-  // Try to get dimensions from map entity
+  // Try to get calibration points first (prioritize them over dimensions to support rotation)
+  let calibrationPoints = getCalibrationPoints(mapEntity);
+
+  if (!calibrationPoints && rooms && rooms.length > 0) {
+    calibrationPoints = autoCalibrateFromRooms(rooms, imageWidth, imageHeight, rotation);
+  }
+
+  if (calibrationPoints && calibrationPoints.length >= 3) {
+    logger.debug('ZoneConverter', 'Using calibration points:', calibrationPoints.length);
+    return convertUsingCalibration(uiZone, calibrationPoints, imageWidth, imageHeight);
+  }
+
+  // If no calibration points, try dimensions
   const dimensions = getMapDimensions(mapEntity);
 
   logger.debug('ZoneConverter', 'Input:', { uiZone, imageWidth, imageHeight, hasDimensions: !!dimensions });
 
-  // If no dimensions available, fall back to calibration-based method
-  if (!dimensions) {
-    const calibrationPoints = getCalibrationPoints(mapEntity);
-    logger.debug('ZoneConverter', 'Using calibration fallback, points:', calibrationPoints?.length ?? 0);
-    return convertUsingCalibration(uiZone, calibrationPoints, imageWidth, imageHeight);
+  if (dimensions) {
+    logger.debug('ZoneConverter', 'Using dimensions:', dimensions);
+
+    const px1 = (uiZone.x1 / 100) * imageWidth;
+    const py1 = (uiZone.y1 / 100) * imageHeight;
+    const px2 = (uiZone.x2 / 100) * imageWidth;
+    const py2 = (uiZone.y2 / 100) * imageHeight;
+
+    const v1 = imageToVacuum(px1, py1, dimensions);
+    const v2 = imageToVacuum(px2, py2, dimensions);
+
+    return {
+      x1: v1.x,
+      y1: v1.y,
+      x2: v2.x,
+      y2: v2.y,
+    };
   }
 
-  logger.debug('ZoneConverter', 'Map dimensions:', dimensions);
-
-  // Convert UI percentages to image pixel coordinates
-  const px1 = (uiZone.x1 / 100) * imageWidth;
-  const py1 = (uiZone.y1 / 100) * imageHeight;
-  const px2 = (uiZone.x2 / 100) * imageWidth;
-  const py2 = (uiZone.y2 / 100) * imageHeight;
-
-  logger.debug('ZoneConverter', 'Pixel coords:', { px1, py1, px2, py2 });
-
-  // Convert to vacuum coordinates
-  const v1 = imageToVacuum(px1, py1, dimensions);
-  const v2 = imageToVacuum(px2, py2, dimensions);
-
-  const result = {
-    x1: v1.x,
-    y1: v1.y,
-    x2: v2.x,
-    y2: v2.y,
-  };
-
-  logger.debug('ZoneConverter', 'Output vacuum coords:', result);
-
-  return result;
+  // Fallback if absolutely nothing is available
+  logger.debug('ZoneConverter', 'No calibration or dimensions, using fallback');
+  return convertUsingCalibration(uiZone, null, imageWidth, imageHeight);
 }
 
 /**
